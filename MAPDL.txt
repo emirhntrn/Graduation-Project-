@@ -1,0 +1,483 @@
+! ============================================================
+! MECHANICAL APDL CODE
+! Multi-Objective Structural Optimization of Stiffened Plates in Contact with Fluid
+!
+! Output parameters:
+!   SELFREQ  : first physical wet frequency above FTOL
+!   SELMODE  : selected mode number
+!   TOTVOL   : structural shell volume
+!   MASS     : structural mass
+! ============================================================
+
+FINISH
+/CLEAR,NOSTART
+/FILNAME,profile_plate_wet_modal
+/TITLE,Profile Plate Wet Modal
+
+/PREP7
+
+! ------------------------------------------------------------
+! USER INPUTS 
+! ------------------------------------------------------------
+LE = 1.0
+HE = 1.0
+
+TPLT = 0.0112
+TPRF = 0.0088
+HS   = 0.0104
+NS   = 0.250
+
+NMODE = 5
+FTOL  = 1.0
+NFAC  = 40
+
+SHOWMSH = 1
+SHOWMOD = 1
+SHOWFLD = 1
+SHOWINT = 1
+MODPLT  = 0
+
+! SHOWMSH : full mesh + structural mesh plots before solve
+! SHOWFLD : fluid volume mesh plot before solve
+! SHOWINT : fluid-plate interface mesh band plot before solve
+! SHOWMOD : one mode-shape plot after solve
+! MODPLT  : 0 plots SELMODE; set to 1,2,3,... for a specific mode
+
+! ------------------------------------------------------------
+! CONSTANTS
+! ------------------------------------------------------------
+RHOS = 7850
+EXS  = 206.8E9
+NUS  = 0.3
+RHOF = 1025
+SONC = 1507
+
+NEL = HE/NFAC
+
+XMIN = -HS - 1.0E-6
+XMAX =  1.0E-6
+XPR1 = -HS - 1.0E-6
+XPR2 = -1.0E-6
+YPL1 = -HE/2
+YPL2 =  HE/2
+ZPL1 = 0
+ZPL2 = LE
+
+! ------------------------------------------------------------
+! ELEMENT TYPES AND MATERIALS
+! ------------------------------------------------------------
+ET,1,FLUID30
+KEYOPT,1,2,0
+KEYOPT,1,4,0
+MPTEMP,,,,,,,,
+MPTEMP,1,0
+MPDATA,DENS,2,,RHOF
+MPDATA,SONC,2,,SONC
+
+ET,2,SHELL181
+MPTEMP,,,,,,,,
+MPTEMP,1,0
+MPDATA,DENS,1,,RHOS
+MPDATA,EX,1,,EXS
+MPDATA,PRXY,1,,NUS
+
+! ------------------------------------------------------------
+! SECTIONS
+! ------------------------------------------------------------
+SECTYPE,1,SHELL,,
+SECDATA,TPLT,1,0.0,3
+SECOFFSET,MID
+SECCONTROL,,,,,,,
+
+SECTYPE,2,SHELL,,
+SECDATA,TPRF,1,0.0,3
+SECOFFSET,MID
+SECCONTROL,,,,,,,
+
+! ------------------------------------------------------------
+! BASE GEOMETRY
+! ------------------------------------------------------------
+K,1,0,-HE,(LE+HE/2)
+K,2,HE,-HE,(LE+HE/2)
+K,3,HE,-HE,(-HE/2)
+K,4,0,-HE,(-HE/2)
+K,5,0,0,(LE+HE/2)
+K,6,HE,0,(LE+HE/2)
+K,7,HE,0,(-HE/2)
+K,8,0,0,(-HE/2)
+K,9,0,(-HE/2),LE
+K,10,0,(-HE/2),0
+K,11,0,(HE/2),0
+K,12,0,(HE/2),LE
+K,13,0,0,LE
+K,14,0,0,0
+
+L,1,2
+L,2,3
+L,3,4
+L,4,1
+L,5,6
+L,6,7
+L,7,8
+L,8,14
+L,14,13
+L,13,5
+L,5,1
+L,6,2
+L,7,3
+L,8,4
+L,9,10
+L,10,14
+L,14,11
+L,11,12
+L,12,13
+L,13,9
+
+! ------------------------------------------------------------
+! STRUCTURED PLATE AND STRAIGHT DRY-SIDE PROFILES
+! ------------------------------------------------------------
+*DIM,ZSTA,ARRAY,60
+*DIM,KLOW,ARRAY,60
+*DIM,KMID,ARRAY,60
+*DIM,KTOP,ARRAY,60
+
+ZSTA(1) = 0
+NPROF = 0
+
+*DO,II,1,50
+  ZP = II*NS
+  *IF,ZP,LT,LE,THEN
+    NPROF = NPROF + 1
+    ZSTA(NPROF+1) = ZP
+  *ENDIF
+*ENDDO
+
+NSTA = NPROF + 2
+ZSTA(NSTA) = LE
+
+KLOW(1) = 10
+KMID(1) = 14
+KTOP(1) = 11
+
+KLOW(NSTA) = 9
+KMID(NSTA) = 13
+KTOP(NSTA) = 12
+
+*IF,NSTA,GT,2,THEN
+  *DO,II,2,(NSTA-1)
+    ZP = ZSTA(II)
+    *GET,KMAX,KP,0,NUM,MAX
+    KLOW(II) = KMAX + 1
+    KMID(II) = KMAX + 2
+    KTOP(II) = KMAX + 3
+    KL1 = KLOW(II)
+    KM1 = KMID(II)
+    KT1 = KTOP(II)
+
+    K,KL1,0,YPL1,ZP
+    K,KM1,0,0,ZP
+    K,KT1,0,YPL2,ZP
+  *ENDDO
+*ENDIF
+
+! Plate strips. Each strip is split into two mapped quadrilateral areas.
+*DO,II,1,(NSTA-1)
+  KL1 = KLOW(II)
+  KM1 = KMID(II)
+  KT1 = KTOP(II)
+  KL2 = KLOW(II+1)
+  KM2 = KMID(II+1)
+  KT2 = KTOP(II+1)
+
+  A,KL2,KL1,KM1,KM2
+  A,KM2,KM1,KT1,KT2
+*ENDDO
+
+*IF,NPROF,GT,0,THEN
+  *DO,II,2,(NSTA-1)
+    ZP = ZSTA(II)
+    *GET,KMAX,KP,0,NUM,MAX
+    KOL = KMAX + 1
+    KOM = KMAX + 2
+    KOT = KMAX + 3
+
+    K,KOL,-HS,YPL1,ZP
+    K,KOM,-HS,0,ZP
+    K,KOT,-HS,YPL2,ZP
+
+    KL1 = KLOW(II)
+    KM1 = KMID(II)
+    KT1 = KTOP(II)
+
+    A,KL1,KOL,KOM,KM1
+    A,KM1,KOM,KOT,KT1
+  *ENDDO
+*ENDIF
+
+ALLSEL,ALL
+
+! ------------------------------------------------------------
+! ATTRIBUTES
+! ------------------------------------------------------------
+ASEL,S,LOC,X,0,0
+AATT,1,,2,0,1
+
+ASEL,S,LOC,X,XPR1,XPR2
+AATT,1,,2,0,2
+
+ALLSEL,ALL
+
+! ------------------------------------------------------------
+! FLUID VOLUME
+! ------------------------------------------------------------
+V,1,2,3,4,5,6,7,8
+VATT,2,,1,0
+
+! Split wet interface face using model lines.
+ASEL,S,LOC,X,0,0
+ASEL,U,LOC,Y,0,HE
+ASBL,ALL,ALL
+
+ALLSEL,ALL
+
+ASEL,S,LOC,X,0,0
+AATT,1,,2,0,1
+
+ASEL,S,LOC,X,XPR1,XPR2
+AATT,1,,2,0,2
+
+ALLSEL,ALL
+
+! ------------------------------------------------------------
+! MESH
+! ------------------------------------------------------------
+LSEL,S,LOC,X,0,0
+LSEL,U,LOC,Z,-LE,-0.001
+LSEL,U,LOC,Z,(LE+0.001),(2*LE)
+LSEL,U,LOC,Y,(-2*HE),(-0.001-HE/2)
+LESIZE,ALL,NEL,,,,1,,,1
+
+ALLSEL,ALL
+LSEL,S,LOC,X,HE,HE
+LSEL,A,LOC,Z,(-HE/2),(-HE/2)
+LSEL,A,LOC,Z,(LE+HE/2),(LE+HE/2)
+LSEL,A,LOC,Y,-HE,-HE
+LESIZE,ALL,(1.5*NEL),,,,1,,,1
+
+ALLSEL,ALL
+LSEL,S,LOC,Z,(-HE/4),(-HE/4)
+LESIZE,ALL,(1.25*NEL),,,0.333,,,,1
+
+ALLSEL,ALL
+LSEL,S,LOC,Z,(LE+HE/4),(LE+HE/4)
+LESIZE,ALL,(1.25*NEL),,,3,,,,1
+
+ALLSEL,ALL
+ASEL,S,LOC,X,XMIN,XMAX
+ASEL,R,LOC,Y,YPL1,YPL2
+ASEL,R,LOC,Z,ZPL1,ZPL2
+MSHAPE,0,2D
+MSHKEY,1
+AMESH,ALL
+
+ALLSEL,ALL
+MSHAPE,1,3D
+MSHKEY,0
+VMESH,ALL
+
+! ------------------------------------------------------------
+! PROFILE ROOT CONNECTION
+! ------------------------------------------------------------
+CPTOL = NEL*0.45
+*IF,CPTOL,LT,0.008,THEN
+  CPTOL = 0.008
+*ENDIF
+
+CPGRD = NEL*1.10
+*IF,CPGRD,LT,0.030,THEN
+  CPGRD = 0.030
+*ENDIF
+
+YCP1 = YPL1 + CPGRD
+YCP2 = YPL2 - CPGRD
+
+*IF,NPROF,GT,0,THEN
+  *DO,II,1,NPROF
+    ZP  = II*NS
+    ZC1 = ZP - CPTOL
+    ZC2 = ZP + CPTOL
+
+    ALLSEL,ALL
+    NSEL,S,LOC,X,-1.0E-6,1.0E-6
+    NSEL,R,LOC,Y,YCP1,YCP2
+    NSEL,R,LOC,Z,ZC1,ZC2
+
+    CPINTF,UX,CPTOL
+    CPINTF,UY,CPTOL
+    CPINTF,UZ,CPTOL
+    CPINTF,ROTX,CPTOL
+    CPINTF,ROTY,CPTOL
+    CPINTF,ROTZ,CPTOL
+  *ENDDO
+*ENDIF
+
+ALLSEL,ALL
+
+! ------------------------------------------------------------
+! BOUNDARY CONDITIONS
+! ------------------------------------------------------------
+LSEL,S,LOC,X,0,0
+LSEL,R,LOC,Y,(-HE/2-0.01),(HE/2+0.01)
+LSEL,R,LOC,Z,-0.01,(LE+0.01)
+LSEL,U,LOC,Y,(-HE/2+0.01),(HE/2-0.01)
+DL,ALL,,UX,0
+DL,ALL,,UY,0
+DL,ALL,,UZ,0
+DL,ALL,,ROTX,0
+DL,ALL,,ROTY,0
+DL,ALL,,ROTZ,0
+
+ALLSEL,ALL
+LSEL,S,LOC,X,0,0
+LSEL,R,LOC,Y,(-HE/2-0.01),(HE/2+0.01)
+LSEL,R,LOC,Z,-0.01,(LE+0.01)
+LSEL,U,LOC,Z,0.01,(LE-0.01)
+DL,ALL,,UX,0
+DL,ALL,,UY,0
+DL,ALL,,UZ,0
+DL,ALL,,ROTX,0
+DL,ALL,,ROTY,0
+DL,ALL,,ROTZ,0
+
+! Fluid-structure interface.
+ALLSEL,ALL
+NSEL,S,LOC,X,0,0
+NSEL,U,LOC,Y,0.000001,HE
+NSEL,U,LOC,Y,(-0.000001-HE/2),-HE
+NSEL,U,LOC,Z,(LE+0.000001),(2*LE)
+NSEL,U,LOC,Z,-HE,-0.000001
+SF,,FSI
+
+! Free surface.
+ALLSEL,ALL
+NSEL,S,LOC,Y,0,0
+NSEL,U,LOC,X,-HS,-0.001
+D,ALL,PRES,0
+
+ALLSEL,ALL
+
+*IF,SHOWFLD,EQ,1,THEN
+  /GRAPHICS,FULL
+  /ESHAPE,1
+  /EDGE,1,1
+  /SHRINK,0.70
+  /VIEW,1,1,1,1
+  ESEL,S,TYPE,,1
+  NSLE,S
+  /ERASE
+  EPLOT
+  ALLSEL,ALL
+*ENDIF
+
+*IF,SHOWINT,EQ,1,THEN
+  /GRAPHICS,FULL
+  /ESHAPE,1
+  /EDGE,1,1
+  /SHRINK,0.62
+  /VIEW,1,1,0,0
+  ALLSEL,ALL
+  NSEL,S,LOC,X,0,0
+  NSEL,R,LOC,Y,YPL1,YPL2
+  NSEL,R,LOC,Z,ZPL1,ZPL2
+  ESLN,S,0
+  ESEL,R,TYPE,,1
+  NSLE,S
+  /ERASE
+  EPLOT
+
+  ALLSEL,ALL
+  ESEL,S,TYPE,,2
+  NSLE,S
+  /VIEW,1,-1,0.5,0.8
+  /ERASE
+  EPLOT
+  ALLSEL,ALL
+*ENDIF
+
+FINISH
+
+! ------------------------------------------------------------
+! SOLUTION
+! ------------------------------------------------------------
+/SOLU
+ANTYPE,2
+MODOPT,UNSYM,NMODE
+MXPAND,NMODE,,,YES
+LUMPM,0
+PSTRES,0
+MODOPT,UNSYM,NMODE,0,10000,,OFF
+SOLVE
+FINISH
+
+! ------------------------------------------------------------
+! POSTPROCESS
+! ------------------------------------------------------------
+/POST1
+
+*DIM,FREQS,ARRAY,NMODE
+SELMODE = 0
+SELFREQ = 0
+
+*DO,II,1,NMODE
+  SET,1,II
+  *GET,FNOW,MODE,II,FREQ
+  FREQS(II) = FNOW
+
+  *IF,SELMODE,EQ,0,THEN
+    *IF,FNOW,GT,FTOL,THEN
+      SELMODE = II
+      SELFREQ = FNOW
+    *ENDIF
+  *ENDIF
+*ENDDO
+
+ALLSEL,ALL
+ESEL,S,TYPE,,2
+ETABLE,EVOL,VOLU
+SSUM
+*GET,TOTVOL,SSUM,0,ITEM,EVOL
+MASS = TOTVOL*RHOS
+ALLSEL,ALL
+
+*STATUS,TOTVOL
+*STATUS,MASS
+
+! ------------------------------------------------------------
+! MODE SHAPES
+! ------------------------------------------------------------
+*IF,SHOWMOD,EQ,1,THEN
+  /GRAPHICS,POWER
+  /ESHAPE,1
+  /EDGE,1,1
+  /SHRINK,1.0
+  /VIEW,1,1,1,1
+  /DSCALE,ALL,AUTO
+
+  MPLOT = SELMODE
+  *IF,MODPLT,GT,0,THEN
+    MPLOT = MODPLT
+  *ENDIF
+
+  *IF,MPLOT,GT,0,THEN
+    SET,1,MPLOT
+    *GET,FNOW,MODE,MPLOT,FREQ
+    ESEL,S,TYPE,,2
+    NSLE,S
+    /ERASE
+    PLDISP,2
+  *ENDIF
+
+  ALLSEL,ALL
+*ENDIF
+
+FINISH
